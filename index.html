@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prateleira aberta · estoque colaborativo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ultra:#2a2fd6; --ultra-dark:#1c1fa0; --ink:#14162b; --paper:#eceef4;
+  --line:#cfd3e0; --alert:#ff5a1f; --ok:#0b7a4b; --white:#fff;
+  --display:"Bricolage Grotesque","Arial Black",sans-serif;
+  --body:"IBM Plex Sans",Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0}
+body{font-family:var(--body);color:var(--ink);background:var(--paper);min-height:100vh;display:grid;grid-template-columns:380px 1fr}
+:focus-visible{outline:3px solid var(--alert);outline-offset:2px}
+
+/* Coluna do formulário */
+aside{background:var(--ultra);color:var(--white);padding:40px 32px;position:sticky;top:0;height:100vh;overflow-y:auto}
+aside h1{font-family:var(--display);font-weight:800;font-size:2.6rem;line-height:.95;letter-spacing:-.02em;margin-bottom:28px}
+form{display:grid;grid-template-columns:1fr 1fr;gap:16px 14px}
+.full{grid-column:1/-1}
+label{display:grid;gap:6px;font-size:.85rem;font-weight:500;color:#dfe0ff}
+input,select{font:inherit;color:var(--ink);background:var(--white);border:0;border-radius:3px;padding:11px 12px;width:100%}
+input::placeholder{color:#8b8fa8}
+button.save{grid-column:1/-1;margin-top:6px;font-family:var(--display);font-weight:800;font-size:1.1rem;background:var(--white);color:var(--ultra);border:0;border-radius:3px;padding:14px;cursor:pointer;transition:background .15s}
+button.save:hover{background:#dfe0ff}
+button.save:disabled{opacity:.6;cursor:wait}
+#msg{grid-column:1/-1;min-height:1.3em;font-size:.9rem;font-weight:500}
+#msg.err{color:#ffd0bf}
+
+/* Lista */
+main{padding:40px 48px;max-width:1000px}
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:22px}
+.top h2{font-family:var(--display);font-weight:800;font-size:2rem;letter-spacing:-.01em}
+.top .resumo{font-size:.95rem;color:#4a4e6b;margin-top:4px}
+.filtros{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.filtros input,.filtros select{background:var(--white);border:1.5px solid var(--line);width:auto;flex:1 1 220px}
+.filtros select{flex:0 1 200px}
+.cab,.item{display:grid;grid-template-columns:96px 1fr 130px 130px;gap:16px;align-items:center}
+.cab{padding:10px 0;font-size:.8rem;color:#5b5f7c;border-bottom:2px solid var(--ink)}
+.item{padding:16px 0;border-bottom:1px solid var(--line)}
+.qtd{font-family:var(--display);font-weight:800;font-size:2.6rem;line-height:1;letter-spacing:-.03em;color:var(--ultra)}
+.item.baixo .qtd{color:var(--alert)}
+.qtd small{display:block;font-family:var(--body);font-weight:500;font-size:.72rem;letter-spacing:0;margin-top:4px}
+.nome{font-weight:500;font-size:1.1rem}
+.meta{font-size:.88rem;color:#5b5f7c;margin-top:3px}
+.preco{font-variant-numeric:tabular-nums;font-size:.95rem}
+.vazio{padding:50px 0;color:#5b5f7c}
+.carregando{padding:30px 0;color:#5b5f7c}
+
+@media (max-width:820px){
+  body{grid-template-columns:1fr}
+  aside{position:static;height:auto}
+  main{padding:28px 20px}
+  .cab{display:none}
+  .item{grid-template-columns:76px 1fr;row-gap:4px}
+  .item .preco{grid-column:2}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<aside>
+  <h1>Prateleira aberta</h1>
+  <form id="form" novalidate>
+    <label class="full">Nome do produto *
+      <input id="nome" required maxlength="120" placeholder="Ex.: Mouse sem fio">
+    </label>
+    <label>Código *
+      <input id="codigo" required maxlength="40" placeholder="Ex.: MS-014">
+    </label>
+    <label>Categoria
+      <input id="categoria" maxlength="60" placeholder="Ex.: Periféricos">
+    </label>
+    <label>Marca
+      <input id="marca" maxlength="60">
+    </label>
+    <label>Modelo
+      <input id="modelo" maxlength="60">
+    </label>
+    <label class="full">Quantidade em estoque *
+      <input id="quantidade" type="number" min="0" step="1" value="0" required>
+    </label>
+    <label>Preço de custo (R$)
+      <input id="preco_custo" type="number" min="0" step="0.01" placeholder="0,00">
+    </label>
+    <label>Preço de venda (R$)
+      <input id="preco_venda" type="number" min="0" step="0.01" placeholder="0,00">
+    </label>
+    <div id="msg" role="status" aria-live="polite"></div>
+    <button class="save" type="submit" id="btn">Salvar produto</button>
+  </form>
+</aside>
+
+<main>
+  <div class="top">
+    <div>
+      <h2>Produtos no estoque</h2>
+      <p class="resumo" id="resumo"></p>
+    </div>
+  </div>
+  <div class="filtros">
+    <input id="busca" type="search" placeholder="Buscar por nome, código ou marca" aria-label="Buscar">
+    <select id="filtroCat" aria-label="Filtrar por categoria"><option value="">Todas as categorias</option></select>
+  </div>
+  <div class="cab"><span>Quantidade</span><span>Produto</span><span>Custo</span><span>Venda</span></div>
+  <div id="lista"><p class="carregando">Carregando produtos…</p></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+// ===== CONFIGURAÇÃO: cole aqui os dados do seu projeto (Project Settings > API) =====
+const SUPABASE_URL = 'SUA_URL_DO_PROJETO';      // ex.: https://xxxx.supabase.co
+const SUPABASE_ANON_KEY = 'SUA_CHAVE_ANON';     // somente a chave anon/public, nunca a service_role
+// ====================================================================================
+
+const LIMITE_BAIXO = 5;
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = id => document.getElementById(id);
+const brl = n => n == null ? '—' : Number(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+let produtos = [];
+
+function aviso(texto, erro){ const m=$('msg'); m.textContent=texto; m.className=erro?'err':''; }
+
+async function carregar(){
+  const { data, error } = await db.from('produtos').select('*').order('created_at',{ascending:false});
+  if (error){ $('lista').innerHTML=''; const p=document.createElement('p'); p.className='vazio';
+    p.textContent='Não foi possível carregar os produtos. Confira a URL, a chave e as políticas do Supabase.'; $('lista').appendChild(p); return; }
+  produtos = data;
+  const cats = [...new Set(produtos.map(p=>p.categoria).filter(Boolean))].sort();
+  const sel = $('filtroCat'), atual = sel.value;
+  sel.length = 1;
+  cats.forEach(c=>{ const o=document.createElement('option'); o.value=o.textContent=c; sel.appendChild(o); });
+  sel.value = cats.includes(atual) ? atual : '';
+  desenhar();
+}
+
+function desenhar(){
+  const q = $('busca').value.trim().toLowerCase(), cat = $('filtroCat').value;
+  const vis = produtos.filter(p =>
+    (!cat || p.categoria === cat) &&
+    (!q || [p.nome,p.codigo,p.marca].some(v => (v||'').toLowerCase().includes(q))));
+  const total = produtos.reduce((s,p)=>s+p.quantidade,0);
+  const baixos = produtos.filter(p=>p.quantidade<=LIMITE_BAIXO).length;
+  $('resumo').textContent = `${produtos.length} produtos, ${total} unidades` + (baixos ? `, ${baixos} com estoque baixo` : '');
+  const lista = $('lista'); lista.innerHTML = '';
+  if (!vis.length){ const p=document.createElement('p'); p.className='vazio';
+    p.textContent = produtos.length ? 'Nenhum produto corresponde à busca.' : 'Ainda não há produtos. Cadastre o primeiro no formulário.'; lista.appendChild(p); return; }
+  vis.forEach(p=>{
+    const el = document.createElement('div'); el.className = 'item' + (p.quantidade<=LIMITE_BAIXO ? ' baixo' : '');
+    const q = document.createElement('div'); q.className='qtd'; q.textContent=p.quantidade;
+    const s = document.createElement('small'); s.textContent = p.quantidade<=LIMITE_BAIXO ? 'estoque baixo' : 'unidades'; q.appendChild(s);
+    const info = document.createElement('div');
+    const n = document.createElement('div'); n.className='nome'; n.textContent=p.nome;
+    const m = document.createElement('div'); m.className='meta';
+    m.textContent = [p.codigo, p.categoria, [p.marca,p.modelo].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    info.append(n,m);
+    const c = document.createElement('div'); c.className='preco'; c.textContent='Custo '+brl(p.preco_custo);
+    const v = document.createElement('div'); v.className='preco'; v.textContent='Venda '+brl(p.preco_venda);
+    el.append(q,info,c,v); lista.appendChild(el);
+  });
+}
+
+$('form').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const nome=$('nome').value.trim(), codigo=$('codigo').value.trim(), qtd=parseInt($('quantidade').value,10);
+  if(!nome || !codigo){ aviso('Preencha o nome e o código do produto.',true); return; }
+  if(isNaN(qtd) || qtd<0){ aviso('Informe uma quantidade igual ou maior que zero.',true); return; }
+  const num = id => $(id).value === '' ? null : Number($(id).value);
+  const novo = { nome, codigo, quantidade:qtd,
+    categoria:$('categoria').value.trim()||null, marca:$('marca').value.trim()||null, modelo:$('modelo').value.trim()||null,
+    preco_custo:num('preco_custo'), preco_venda:num('preco_venda') };
+  $('btn').disabled = true; aviso('Salvando…');
+  const { error } = await db.from('produtos').insert(novo);
+  $('btn').disabled = false;
+  if (error){ aviso(error.code==='23505' ? 'Já existe um produto com esse código. Use outro código.' : 'Não foi possível salvar. Tente de novo.', true); return; }
+  aviso('Produto salvo.'); $('form').reset(); $('quantidade').value=0; $('nome').focus();
+  carregar();
+});
+
+$('busca').addEventListener('input',desenhar);
+$('filtroCat').addEventListener('change',desenhar);
+carregar();
+</script>
+</body>
+</html>
